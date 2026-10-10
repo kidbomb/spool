@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spool</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="toolbar">
+  <div class="brand"><img src="/static/icon.svg" alt="" width="22" height="22"><span>Spool</span></div>
+  <div class="group">
+    <button id="btn-add" class="tb primary" title="Add download (A)">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Add</span></button>
+  </div>
+  <div class="group">
+    <button id="btn-resume" class="tb" title="Resume selected" disabled>
+      <svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg><span>Resume</span></button>
+    <button id="btn-pause" class="tb" title="Pause selected" disabled>
+      <svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg><span>Pause</span></button>
+    <button id="btn-remove" class="tb" title="Remove selected (Del)" disabled>
+      <svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg><span>Remove</span></button>
+  </div>
+  <div class="spacer"></div>
+  <select id="filter" aria-label="Filter">
+    <option value="all">All</option>
+    <option value="active">Active</option>
+    <option value="queued">Queued</option>
+    <option value="paused">Paused</option>
+    <option value="done">Finished</option>
+    <option value="error">Errors</option>
+  </select>
+  <input id="search" type="search" placeholder="Filter…" aria-label="Search">
+  <button id="btn-settings" class="tb icon-only" title="Settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+  </button>
+</header>
+
+<main id="list" tabindex="0" aria-label="Downloads">
+  <div id="empty" class="empty" hidden>
+    <p>No downloads yet.</p>
+    <p class="muted">Click <b>Add</b>, paste a link anywhere on this page, or drop one here.</p>
+  </div>
+</main>
+
+<aside id="details" class="drawer" hidden>
+  <div class="drawer-head">
+    <h2 id="d-title">Details</h2>
+    <button class="tb icon-only" id="d-close" title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <dl id="d-meta" class="meta"></dl>
+  <div class="drawer-actions">
+    <button id="d-retry" class="btn">Retry download</button>
+    <button id="d-arr" class="btn" hidden>Send to Sonarr again</button>
+  </div>
+  <h3>Log</h3>
+  <pre id="d-log" class="log"></pre>
+</aside>
+
+<footer class="statusbar">
+  <span id="sb-speed">↓ 0 B/s</span>
+  <span id="sb-counts"></span>
+  <span class="spacer"></span>
+  <button id="sb-cookies" class="chip" title="Cookies"></button>
+  <span id="sb-conn" class="dot" title="Live updates"></span>
+</footer>
+
+<!-- Add dialog -->
+<dialog id="dlg-add">
+  <form method="dialog" id="form-add">
+    <h2>Add download</h2>
+    <label><span>URLs <span class="muted">(one per line)</span></span>
+      <textarea id="add-urls" rows="4" required placeholder="https://…"></textarea></label>
+    <div class="row">
+      <label>Quality <select id="add-preset"></select></label>
+      <label><span>Subfolder <span class="muted">(optional)</span></span><input id="add-sub" placeholder="e.g. music"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="add-playlist"> Download whole playlist / channel</label>
+    <fieldset id="arr-box">
+      <legend>Send to</legend>
+      <div class="seg" id="add-arr">
+        <label><input type="radio" name="arr" value="" checked><span>Nothing</span></label>
+        <label><input type="radio" name="arr" value="sonarr"><span>Sonarr</span></label>
+        <label><input type="radio" name="arr" value="radarr"><span>Radarr</span></label>
+      </div>
+      <label id="release-wrap" hidden>Release name
+        <input id="add-release" placeholder="Show Name - S01E05">
+        <small class="muted" id="release-hint">Sonarr/Radarr identify the file from this name.</small></label>
+    </fieldset>
+    <p class="error" id="add-error" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn" value="cancel" id="add-cancel">Cancel</button>
+      <button type="submit" class="btn primary" value="ok">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Remove dialog -->
+<dialog id="dlg-remove">
+  <form method="dialog">
+    <h2 id="rm-title">Remove download?</h2>
+    <p class="muted" id="rm-text"></p>
+    <label class="check"><input type="checkbox" id="rm-files"> Also delete downloaded files</label>
+    <div class="actions">
+      <button type="button" class="btn" id="rm-cancel">Cancel</button>
+      <button type="submit" class="btn danger" id="rm-ok">Remove</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Settings dialog -->
+<dialog id="dlg-settings" class="wide">
+  <div class="dlg-body">
+    <div class="dlg-head"><h2>Settings</h2>
+      <button class="tb icon-only" id="set-close" title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+
+    <section>
+      <h3>Cookies</h3>
+      <p class="muted">For sites that need a login or that block anonymous downloads. Export them from your browser in
+        <b>Netscape cookies.txt</b> format (for example with the “Get cookies.txt LOCALLY” extension). Spool stores the file
+        in <code>/config/cookies.txt</code> and never shows its contents.</p>
+      <div id="ck-status" class="status-box"></div>
+      <div class="row">
+        <label class="btn file-btn">Upload cookies.txt<input type="file" id="ck-file" accept=".txt,text/plain" hidden></label>
+        <button class="btn" id="ck-paste-toggle">Paste instead…</button>
+        <button class="btn danger" id="ck-delete">Remove cookies</button>
+      </div>
+      <div id="ck-paste" hidden>
+        <textarea id="ck-text" rows="6" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;0&#9;NAME&#9;VALUE"></textarea>
+        <button class="btn primary" id="ck-save">Save cookies</button>
+      </div>
+      <p class="error" id="ck-error" hidden></p>
+    </section>
+
+    <section>
+      <h3>Sonarr &amp; Radarr</h3>
+      <p class="muted">Configured with environment variables. When a download with “Send to” finishes, Spool asks the app to scan
+        and import its release folder.</p>
+      <div id="arr-list"></div>
+    </section>
+
+    <section>
+      <h3>Bookmarklet</h3>
+      <p class="muted">Drag this to your bookmarks bar. Clicking it on a video page opens Spool with the link ready to add.</p>
+      <a id="bookmarklet" class="chip" href="#">+ Spool</a>
+    </section>
+
+    <section>
+      <h3>About</h3>
+      <p class="muted" id="about"></p>
+    </section>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

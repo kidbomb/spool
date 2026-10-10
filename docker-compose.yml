@@ -1,0 +1,27 @@
+services:
+  spool:
+    build: .
+    image: spool:latest
+    container_name: spool
+    restart: unless-stopped
+    ports:
+      - "7765:7765"
+    volumes:
+      - ./config:/config
+      # Same host folder your Sonarr/Radarr can see
+      - /srv/media/downloads/spool:/downloads
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: America/Chicago
+      SPOOL_MAX_CONCURRENT: "2"
+      # SPOOL_PASSWORD: change-me          # enables a login (user "admin" unless SPOOL_USER is set)
+      # SPOOL_YTDLP_CHANNEL: nightly       # if a site breaks before a stable fix ships
+
+      # Sonarr / Radarr (optional). *_DOWNLOADS_PATH is where THAT app sees Spool's /downloads.
+      # SONARR_URL: http://sonarr:8989
+      # SONARR_API_KEY: xxxxxxxx
+      # SONARR_DOWNLOADS_PATH: /downloads/spool
+      # RADARR_URL: http://radarr:7878
+      # RADARR_API_KEY: xxxxxxxx
+      # RADARR_DOWNLOADS_PATH: /downloads/spool
