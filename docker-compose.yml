@@ -1,6 +1,8 @@
 services:
   spool:
-    build: .
+    build:
+      context: .
+      network: host
     image: spool:latest
     container_name: spool
     restart: unless-stopped
