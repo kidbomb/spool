@@ -1,4 +1,5 @@
 """Download queue: a dispatcher thread hands queued jobs to worker threads running yt-dlp."""
+import logging
 import re
 import shutil
 import threading
@@ -45,6 +46,35 @@ def inside_downloads(p: Path) -> bool:
         return rp != root and rp.is_relative_to(root)
     except OSError:
         return False
+
+
+def probe(url: str) -> dict:
+    """Read a video's metadata without downloading it (for matching against Sonarr)."""
+    opts = {"skip_download": True, "noplaylist": True, "quiet": True, "no_warnings": True,
+            "extract_flat": "in_playlist", "logger": logging.getLogger("spool.probe")}
+    cookie_file = cookies.temp_copy()
+    if cookie_file:
+        opts["cookiefile"] = str(cookie_file)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False, process=False) or {}
+    except yt_dlp.utils.DownloadError as e:
+        raise ValueError(ANSI.sub("", str(e)).removeprefix("ERROR: ")) from e
+    finally:
+        if cookie_file:
+            cookie_file.unlink(missing_ok=True)
+    if info.get("_type") == "playlist":
+        raise ValueError("That URL is a playlist; matching works on a single video")
+    d = info.get("upload_date") or info.get("release_date")
+    if not d and info.get("timestamp"):
+        d = time.strftime("%Y%m%d", time.gmtime(info["timestamp"]))
+    return {
+        "title": info.get("title"),
+        "upload_date": f"{d[:4]}-{d[4:6]}-{d[6:8]}" if d and len(d) == 8 else None,
+        "channel": info.get("series") or info.get("channel") or info.get("uploader"),
+        "season": info.get("season_number"),
+        "episode": info.get("episode_number"),
+    }
 
 
 class JobLogger:

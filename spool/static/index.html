@@ -84,8 +84,15 @@
         <label><input type="radio" name="arr" value="sonarr"><span>Sonarr</span></label>
         <label><input type="radio" name="arr" value="radarr"><span>Radarr</span></label>
       </div>
+      <div id="match-wrap" class="inline" hidden>
+        <select id="add-series" aria-label="Series"><option value="">Series: detect automatically</option></select>
+        <button type="button" class="btn" id="add-match">Match from video</button>
+      </div>
+      <div id="match-list" hidden></div>
       <label id="release-wrap" hidden>Release name
-        <input id="add-release" placeholder="Show Name - S01E05">
+        <span class="inline"><input id="add-release" placeholder="Show Name - S01E05">
+          <button type="button" class="btn" id="add-check">Check</button></span>
+        <small id="release-check" hidden></small>
         <small class="muted" id="release-hint">Sonarr/Radarr identify the file from this name.</small></label>
     </fieldset>
     <p class="error" id="add-error" hidden></p>

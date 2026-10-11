@@ -13,10 +13,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__, cookies
-from .arr import ArrError, load_clients
+from .arr import ArrError, guess_series, load_clients, match_episodes, release_name
 from .config import settings
 from .db import DB
-from .worker import PRESETS, Manager
+from .worker import PRESETS, Manager, probe
 
 STATIC = Path(__file__).parent / "static"
 
@@ -82,6 +82,11 @@ class AddJobs(BaseModel):
     playlist: bool = False
     arr: str | None = None            # None | "sonarr" | "radarr"
     release_name: str | None = None   # required when arr is set
+
+
+class MatchReq(BaseModel):
+    url: str
+    series_id: int | None = None      # None = guess from channel / video title
 
 
 class CookieText(BaseModel):
@@ -251,6 +256,83 @@ def test_arr(kind: str):
         return client.test()
     except ArrError as e:
         return JSONResponse({"ok": False, "error": str(e)}, 502)
+
+
+@app.get("/api/arr/{kind}/parse")
+def parse_release(kind: str, title: str):
+    client = arr_clients.get(kind)
+    if not client:
+        raise HTTPException(404, f"{kind} is not configured")
+    if not title.strip():
+        raise HTTPException(400, "Enter a release name to check")
+    try:
+        return client.parse(title.strip())
+    except ArrError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, 502)
+
+
+def _sonarr():
+    client = arr_clients.get("sonarr")
+    if not client:
+        raise HTTPException(404, "sonarr is not configured")
+    return client
+
+
+@app.get("/api/arr/sonarr/series")
+def sonarr_series():
+    try:
+        return _sonarr().series()
+    except ArrError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, 502)
+
+
+@app.post("/api/arr/sonarr/match")
+def sonarr_match(body: MatchReq):
+    """Work out which Sonarr episode a video URL is, from its title / upload date."""
+    client = _sonarr()
+    url = body.url.strip()
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(400, "Enter the video URL first")
+    try:
+        video = probe(url)
+    except ValueError as e:
+        raise HTTPException(422, f"Could not read the video: {e}")
+    try:
+        library = client.series()
+        if body.series_id is not None:
+            series = next((s for s in library if s["id"] == body.series_id), None)
+            if not series:
+                raise HTTPException(404, "That series is no longer in Sonarr")
+            series_score = None
+        else:
+            series, series_score = guess_series(video, library)
+            if not series or series_score < 0.6:
+                return {"video": video, "series": None, "candidates": [],
+                        "error": "Couldn't tell which series this is; pick it from the list"}
+        episodes = client.episodes(series["id"])
+        candidates = []
+        # 1. the site itself reports season/episode numbers
+        if video["season"] is not None and video["episode"] is not None:
+            hit = next((e for e in episodes if e.get("seasonNumber") == video["season"]
+                        and e.get("episodeNumber") == video["episode"]), None)
+            if hit:
+                candidates.append({"season": hit["seasonNumber"], "episode": hit["episodeNumber"],
+                                   "title": hit.get("title"), "air_date": hit.get("airDate"),
+                                   "score": 1.0, "reason": "site metadata"})
+        # 2. the video title is already a parseable release name (e.g. contains S01E05)
+        if not candidates and video["title"]:
+            parsed = client.parse(video["title"])
+            if parsed.get("match") == series["title"]:
+                candidates += [{**e, "air_date": None, "score": 1.0, "reason": "parsed by Sonarr"}
+                               for e in parsed["matched_episodes"]]
+        # 3. air date / title similarity
+        seen = {(c["season"], c["episode"]) for c in candidates}
+        candidates += [c for c in match_episodes(video, series, episodes) if (c["season"], c["episode"]) not in seen]
+    except ArrError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, 502)
+    for c in candidates:
+        c["release_name"] = release_name(series, c["season"], c["episode"])
+    return {"video": video, "series": {**series, "guess_score": series_score}, "candidates": candidates[:5]}
 
 
 @app.get("/api/info")

@@ -148,6 +148,13 @@ legend { font-size: 13px; font-weight: 500; padding: 0 4px; }
 .btn.primary.danger, #rm-ok { background: var(--err); border-color: var(--err); color: #fff; }
 .file-btn { flex-direction: row; }
 .error { color: var(--err); margin: 0; font-size: 13px; }
+.inline { display: flex; gap: 6px; } .inline input { flex: 1; min-width: 0; }
+#match-wrap { margin-bottom: 10px; } #match-wrap select { flex: 1; min-width: 0; }
+#match-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 13px; }
+#match-list .cand { display: flex; gap: 8px; align-items: baseline; text-align: left; font-weight: 400; }
+#match-list .cand.on { border-color: var(--accent); background: var(--accent-soft); }
+#match-list .cand .muted { margin-left: auto; white-space: nowrap; }
+#release-check { font-weight: 400; } #release-check.ok { color: var(--ok); } #release-check.bad { color: var(--warn); }
 .status-box { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); margin-bottom: 10px; }
 .arr-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 13px; }
 .arr-row b { min-width: 60px; }

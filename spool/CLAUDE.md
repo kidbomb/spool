@@ -12,7 +12,10 @@ Spool is a Transmission-style web UI for yt-dlp, shipped as a container. Default
 - `spool/cookies.py` – Netscape cookies.txt validation/storage; per-job temp copy (yt-dlp rewrites it);
   contents never returned by the API
 - `spool/arr.py` – Sonarr/Radarr: `DownloadedEpisodesScan` / `DownloadedMoviesScan` on the release
-  folder, path mapped via `*_DOWNLOADS_PATH`; status polled and shown as `arr_status`
+  folder, path mapped via `*_DOWNLOADS_PATH`; status polled and shown as `arr_status`;
+  `/api/arr/{kind}/parse` wraps the *arr `/parse` endpoint for the add-dialog "Check" button;
+  `/api/arr/sonarr/match` probes the URL (`worker.probe`, no download) and ranks episodes: site
+  season/episode metadata → Sonarr `/parse` of the video title → air date ±1 day / fuzzy title (`match_episodes`)
 - `spool/static/` – no-build frontend (index.html, app.js, style.css), light/dark, mobile layout
 - `Dockerfile`, `entrypoint.sh` (yt-dlp auto-update, PUID/PGID via setpriv), `docker-compose.yml`
 

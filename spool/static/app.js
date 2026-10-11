@@ -224,6 +224,8 @@ function openAdd(prefill = "") {
   $("#add-error").hidden = true;
   $("#add-urls").value = prefill;
   $("#add-release").value = "";
+  $("#release-check").hidden = true;
+  $("#match-list").hidden = true;
   document.querySelector('#add-arr input[value=""]').checked = true;
   syncArr();
   $("#dlg-add").showModal();
@@ -232,13 +234,95 @@ function openAdd(prefill = "") {
 function syncArr() {
   const v = document.querySelector("#add-arr input:checked").value;
   $("#release-wrap").hidden = !v;
+  $("#match-wrap").hidden = v !== "sonarr";
+  if (v === "sonarr") loadSeries();
   $("#add-release").required = !!v;
   $("#add-release").placeholder = v === "radarr" ? "Movie Name (2024)" : "Show Name - S01E05";
   $("#release-hint").textContent = v === "radarr"
     ? "Radarr identifies the movie from this name: title and year."
     : "Sonarr identifies the episode from this name: series, season and episode (S01E05) or air date (2024-03-15).";
 }
-$("#add-arr").addEventListener("change", syncArr);
+$("#add-arr").addEventListener("change", () => { $("#release-check").hidden = true; syncArr(); });
+
+// ---------- release-name check (asks the *arr how it parses the name) ----------
+const pad = (n) => String(n).padStart(2, "0");
+function describeParse(kind, r) {
+  if (!r.parsed) return [false, `${arrName(kind)} can't parse this name`];
+  if (kind === "radarr") {
+    const name = `${r.title ?? "?"}${r.year ? ` (${r.year})` : ""}`;
+    return r.match ? [true, `✓ ${r.match}`] : [false, `Parsed as ${name}, but it's not in Radarr`];
+  }
+  const where = r.air_date ? r.air_date
+    : r.episodes.length ? r.episodes.map((e) => `S${pad(r.season)}E${pad(e)}`).join(", ")
+    : r.season != null ? `season ${r.season}` : "";
+  if (!r.match) return [false, `Parsed as ${r.title ?? "?"} ${where}, but the series is not in Sonarr`];
+  if (!r.matched_episodes.length) return [false, `${r.match} ${where}: no such episode in Sonarr`];
+  const eps = r.matched_episodes.map((e) => `S${pad(e.season)}E${pad(e.episode)}${e.title ? ` "${e.title}"` : ""}`);
+  return [true, `✓ ${r.match}, ${eps.join(", ")}`];
+}
+$("#add-check").onclick = async () => {
+  const kind = document.querySelector("#add-arr input:checked").value;
+  const title = $("#add-release").value.trim();
+  const out = $("#release-check");
+  if (!kind || !title) return;
+  out.className = "muted"; out.textContent = "Checking…"; out.hidden = false;
+  try {
+    const [ok, msg] = describeParse(kind, await api(`/api/arr/${kind}/parse?title=${encodeURIComponent(title)}`));
+    out.className = ok ? "ok" : "bad"; out.textContent = msg;
+  } catch (err) {
+    out.className = "bad"; out.textContent = err.message;
+  }
+};
+$("#add-release").addEventListener("input", () => ($("#release-check").hidden = true));
+
+// ---------- auto-match: video URL -> Sonarr episode ----------
+let seriesLoaded = false;
+async function loadSeries() {
+  if (seriesLoaded) return;
+  try {
+    const list = await api("/api/arr/sonarr/series");
+    const sel = $("#add-series");
+    for (const s of list) sel.add(new Option(s.year ? `${s.title} (${s.year})` : s.title, s.id));
+    seriesLoaded = true;
+  } catch { /* the dropdown keeps "detect automatically"; Match reports the real error */ }
+}
+function pickCandidate(btn, c) {
+  $("#add-release").value = c.release_name;
+  for (const b of document.querySelectorAll("#match-list .cand")) b.classList.toggle("on", b === btn);
+  $("#add-check").click();
+}
+$("#add-match").onclick = async () => {
+  const url = $("#add-urls").value.split(/\s+/).filter(Boolean);
+  const out = $("#match-list");
+  out.replaceChildren(); out.hidden = false;
+  const note = (cls, text) => { const p = document.createElement("small"); p.className = cls; p.textContent = text; out.append(p); };
+  if (url.length !== 1) return note("bad", "Matching needs exactly one URL");
+  const btn = $("#add-match"); btn.disabled = true;
+  note("muted", "Reading video info…");
+  try {
+    const series = $("#add-series").value;
+    const r = await api("/api/arr/sonarr/match", { method: "POST", body: { url: url[0], series_id: series ? +series : null } });
+    out.replaceChildren();
+    const v = r.video;
+    note("muted", `Video: "${v.title ?? "?"}"${v.upload_date ? `, uploaded ${v.upload_date}` : ""}${v.channel ? ` by ${v.channel}` : ""}`);
+    if (r.error) return note("bad", r.error);
+    if (!series) note("muted", `Series detected: ${r.series.title} (change it above if wrong)`);
+    if (!r.candidates.length) return note("bad", `No episode of ${r.series.title} matches this video's title or air date`);
+    r.candidates.forEach((c, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "btn cand";
+      b.innerHTML = `<b>S${pad(c.season)}E${pad(c.episode)}</b><span>${esc(c.title || "")}</span>`
+        + `<span class="muted">${esc(c.reason)} · ${Math.round(c.score * 100)}%</span>`;
+      b.onclick = () => pickCandidate(b, c);
+      out.append(b);
+      if (i === 0) pickCandidate(b, c);
+    });
+  } catch (err) {
+    out.replaceChildren(); note("bad", err.message);
+  } finally {
+    btn.disabled = false;
+  }
+};
 $("#btn-add").onclick = () => openAdd();
 $("#add-cancel").onclick = () => $("#dlg-add").close();
 $("#form-add").addEventListener("submit", async (e) => {
